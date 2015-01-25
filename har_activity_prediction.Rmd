@@ -1,0 +1,71 @@
+#Human Activity Prediction Based on Sensor Data.
+Data Based on : http://groupware.les.inf.puc-rio.br/har
+
+
+```{r}
+library(caret)
+hardata <- read.csv("pml-training.csv")
+submitdata <- read.csv("pml-testing.csv")
+set.seed(555)
+inTrain <- createDataPartition(y=hardata$classe, p=0.5,list = FALSE)
+tr <- hardata[inTrain, ]
+ts <- hardata[-inTrain,]
+hardata$X <- NULL; #remove the row number.
+```
+##Removing variables and reducing dimensionality.
+The data set has 160 variables. The random forest model which I'm planning to use  has a compuational complexity of O(M(mn log n) where M is the number of trees, m is the number of attributes and n is the number of observations. It's necessary to remove any unwanted variables to reduce compuation time while not impacting the accuracy.
+
+first we'll try to find the columns with NAs.
+```{r}
+nacounts <- sapply(tr, function(col){sum(!complete.cases(col))})
+table(nacounts)
+```
+There are 67 columns which have 9612 NAs, while the other columns have 0 NAs. This is a really high amount considering the number of training examples is 9812. Thus I'll remove them.
+
+```{r}
+noNAcolumns <- nacounts[which(nacounts == 0)] 
+tr <- tr[, names(noNAcolumns)]
+```
+
+Next we'll try to find the features which have very low variance, and remove them.
+```{r}
+nzvCol <- nearZeroVar(tr)
+tr <- tr[, -nzvCol]
+```
+
+Now let's see if we should keep the user_name in the training data set.
+This would be required if there is variation of the features between users.
+We'll pick one random feature roll_belt.
+```{r}
+boxplot(roll_belt ~ user_name, data=tr)
+```
+There is significant variation between users so it makes sense to keep user_name in the training.
+Otherwise we'll  have to normalize the features so that they become independant from user variablility. I'm not sure how to do this since I don't have much understanding of human body movements.
+
+##Training the Random Forest.
+
+
+```{r}
+fit <- train(classe ~ ., data=tr, method="rf")
+```
+The main problem I had with running random forest is the compuational time,
+I initially started with 10% sample for the training.
+Then tried 20%  found out that the crossvalidation error was decreasing.
+It was pretty accurate with 50% data on the test set so I stopped there.
+
+Let's look at the generated model.
+```{r, echo=FALSE}
+fit
+```
+So the lowest cross validation error is when the number of trees is 40.
+
+Prediction on the test set. 
+```{r}
+res <- predict(fit, newdata = ts)
+confusionMatrix(res,reference = ts$classe)
+```
+
+Looking at the confusion matrix, The out of sample accuracy is 0.9989 which is almost same as the cross validation error.
+Thus, we can say that there is no overfitting and since the accuracy is high there is not bias too.
+In fact I managed to score 20/20 with this model in the submission section.
+
